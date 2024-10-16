@@ -12,20 +12,6 @@ func registerRoutes(mux *http.ServeMux, db *sql.DB) {
 	mux.HandleFunc("GET /", handleCreateTodo)
 }
 
-type Todo struct {
-	Title       string
-	Description string
-	Completed   bool
-}
-
-func NewTodo(title, description string) Todo {
-	return Todo{
-		Title:       title,
-		Description: description,
-		Completed:   false,
-	}
-}
-
 func handleCreateTodo(w http.ResponseWriter, r *http.Request) {
 
 }

@@ -1,10 +1,10 @@
 package cache
 
-
+// Strategy is the selected caching algorithm.
 type Strategy int
 
 const (
-	UnsetStrategy Strategy = iota 
+	UnsetStrategy Strategy = iota
 	WriteThrough
 	WriteBack
 	ReadThrough
