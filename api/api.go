@@ -1,13 +1,14 @@
 package api
 
-import "net/http"
+import (
+	"database/sql"
+	"net/http"
+)
 
-
-func New() *http.ServeMux{
+func New(db *sql.DB) *http.ServeMux {
 	mux := http.NewServeMux()
 
-	registerRoutes(mux)
+	registerRoutes(mux, db)
 
 	return mux
 }
-

@@ -1,8 +1,11 @@
 package api
 
-import "net/http"
+import (
+	"database/sql"
+	"net/http"
+)
 
-func registerRoutes(mux *http.ServeMux) {
+func registerRoutes(mux *http.ServeMux, db *sql.DB) {
 	mux.HandleFunc("POST /", handleCreateTodo)
 	mux.HandleFunc("GET /", handleGetTodo)
 	mux.HandleFunc("GET /", handleCreateTodo)
@@ -13,6 +16,14 @@ type Todo struct {
 	Title       string
 	Description string
 	Completed   bool
+}
+
+func NewTodo(title, description string) Todo {
+	return Todo{
+		Title:       title,
+		Description: description,
+		Completed:   false,
+	}
 }
 
 func handleCreateTodo(w http.ResponseWriter, r *http.Request) {
