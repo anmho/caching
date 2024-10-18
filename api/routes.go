@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"github.com/anmho/caching/todo"
 	"github.com/google/uuid"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 
 func registerRoutes(mux *http.ServeMux, todoService *todo.Service) {
 	register(mux, "POST /todos", handleCreateTodo(todoService))
+	register(mux, "GET /todos", handleGetTodos(todoService))
 	register(mux, "GET /todos/{id}", handleGetTodoByID(todoService))
 	register(mux, "PUT /todos/{id}", handleUpdateTodo(todoService))
 	register(mux, "DELETE /todos/{id}", handleDeleteTodo(todoService))
@@ -67,7 +69,26 @@ func handleGetTodoByID(todoService *todo.Service) RouteHandler {
 }
 
 func handleGetTodos(todoService *todo.Service) RouteHandler {
-	return func(w http.ResponseWriter, r *http.Request) error { return nil }
+	return func(w http.ResponseWriter, r *http.Request) error {
+		//filters, err := parseFilters(r.URL.Query())
+		//if err != nil {
+		//	return NewError(err, WithStatus(http.StatusBadRequest))
+		//}
+
+		userIDParam := r.URL.Query().Get("user-id")
+		userID, err := uuid.Parse(userIDParam)
+		if err != nil {
+			return NewError(errors.New("user-id is required"), WithStatus(http.StatusBadRequest))
+		}
+
+		todos, err := todoService.GetAllTodosForUser(r.Context(), userID)
+
+		if err != nil {
+			return err
+		}
+
+		return JSON(http.StatusOK, todos, w)
+	}
 }
 
 func handleUpdateTodo(todoService *todo.Service) RouteHandler {

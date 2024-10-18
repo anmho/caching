@@ -2,15 +2,12 @@ package todo
 
 import (
 	"context"
-	"fmt"
 	"github.com/anmho/caching/cache"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/google/uuid"
 	"log/slog"
-	"strconv"
-	"time"
 )
 
 const TodoItemsTableName = "TodoItems"
@@ -34,71 +31,6 @@ func MakeService(dynamoClient *dynamodb.Client, opts ...func(o *Service)) *Servi
 		opt(s)
 	}
 	return s
-}
-
-func serializeTodoDynamo(todo *Todo) map[string]types.AttributeValue {
-	if todo == nil {
-		return nil
-	}
-
-	values := map[string]types.AttributeValue{
-		"ID":          &types.AttributeValueMemberS{Value: todo.ID.String()},
-		"UserID":      &types.AttributeValueMemberS{Value: todo.UserID.String()},
-		"CompletedAt": nil,
-		"CreatedAt":   &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", todo.CreatedAt.UnixMilli())}, // Store as Unix timestamp
-		"Title":       &types.AttributeValueMemberS{Value: todo.Title},
-		"Description": &types.AttributeValueMemberS{Value: todo.Description},
-	}
-
-	if todo.IsCompleted() {
-		values["CompletedAt"] = &types.AttributeValueMemberS{Value: todo.CompletedAt.Format(time.RFC3339)}
-	}
-
-	return values
-}
-
-func deserializeTodoDynamo(item map[string]types.AttributeValue) (*Todo, error) {
-	todo := new(Todo)
-	if idField, ok := item["ID"].(*types.AttributeValueMemberS); ok {
-		id, err := uuid.Parse(idField.Value)
-		if err != nil {
-			return nil, err
-		}
-
-		todo.ID = id
-	}
-
-	if createdAtField, ok := item["CreatedAt"].(*types.AttributeValueMemberN); ok {
-		createdAtUnixMillis, err := strconv.ParseInt(createdAtField.Value, 10, 64)
-		if err != nil {
-			return nil, err
-		}
-
-		createdAt := time.UnixMilli(createdAtUnixMillis)
-		todo.CreatedAt = createdAt
-	}
-
-	if completedAtField, ok := item["CompletedAt"].(*types.AttributeValueMemberN); ok {
-		completedAtUnixMillis, err := strconv.ParseInt(completedAtField.Value, 10, 64)
-		if err != nil {
-			return nil, err
-		}
-
-		completedAt := time.UnixMilli(completedAtUnixMillis)
-		todo.CompletedAt = &completedAt
-	}
-
-	if titleField, ok := item["Title"].(*types.AttributeValueMemberS); ok {
-		title := titleField.Value
-		todo.Title = title
-	}
-
-	if descriptionField, ok := item["Description"].(*types.AttributeValueMemberS); ok {
-		description := descriptionField.Value
-		todo.Description = description
-	}
-
-	return todo, nil
 }
 
 func (s *Service) CreateTodo(
@@ -147,26 +79,33 @@ func (s *Service) FindTodoByID(ctx context.Context, id uuid.UUID) (*Todo, error)
 	return todo, nil
 }
 
-func (s *Service) GetAllTodosForUser(ctx context.Context, userID uuid.UUID) (*Todo, error) {
-	//input := &dynamodb.ScanInput{
-	//	TableName:                 aws.String(TodoItemsTableName),
-	//	ConditionalOperator:       "",
-	//	ConsistentRead:            nil,
-	//	ExclusiveStartKey:         nil,
-	//	ExpressionAttributeNames:  nil,
-	//	ExpressionAttributeValues: nil,
-	//	FilterExpression:          nil,
-	//	IndexName:                 nil,
-	//	Limit:                     nil,
-	//	ProjectionExpression:      nil,
-	//	ReturnConsumedCapacity:    "",
-	//	ScanFilter:                nil,
-	//	Segment:                   nil,
-	//	Select:                    "",
-	//	TotalSegments:             nil,
-	//}
-	//s.dynamoClient.Query()
-	return nil, nil
+func (s *Service) GetAllTodosForUser(ctx context.Context, userID uuid.UUID) ([]*Todo, error) {
+	// add pagination with pagination token?
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(TodoItemsTableName),
+		ConsistentRead:         aws.Bool(true),
+		KeyConditionExpression: aws.String("UserID = :userID"),
+		ReturnConsumedCapacity: types.ReturnConsumedCapacityTotal,
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":userID": &types.AttributeValueMemberS{
+				Value: userID.String(),
+			},
+		},
+	}
+	output, err := s.dynamoClient.Query(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	todos := make([]*Todo, 0)
+	for _, item := range output.Items {
+		todo, err := deserializeTodoDynamo(item)
+		if err != nil {
+			return nil, err
+		}
+		todos = append(todos, todo)
+	}
+
+	return todos, nil
 }
 func (s *Service) UpdateTodo(ctx context.Context, todo *Todo) error {
 	//todoItem := serializeTodoDynamo(todo)
@@ -191,6 +130,6 @@ func (s *Service) UpdateTodo(ctx context.Context, todo *Todo) error {
 	return nil
 }
 
-func (s *Service) DeleteTodo() {
+func (s *Service) DeleteTodo(userID uuid.UUID, todoID uuid.UUID) {
 
 }
