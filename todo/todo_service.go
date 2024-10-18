@@ -40,13 +40,21 @@ func serializeTodoDynamo(todo *Todo) map[string]types.AttributeValue {
 	if todo == nil {
 		return nil
 	}
-	return map[string]types.AttributeValue{
+
+	values := map[string]types.AttributeValue{
 		"ID":          &types.AttributeValueMemberS{Value: todo.ID.String()},
 		"UserID":      &types.AttributeValueMemberS{Value: todo.UserID.String()},
+		"CompletedAt": nil,
 		"CreatedAt":   &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", todo.CreatedAt.UnixMilli())}, // Store as Unix timestamp
 		"Title":       &types.AttributeValueMemberS{Value: todo.Title},
 		"Description": &types.AttributeValueMemberS{Value: todo.Description},
 	}
+
+	if todo.IsCompleted() {
+		values["CompletedAt"] = &types.AttributeValueMemberS{Value: todo.CompletedAt.Format(time.RFC3339)}
+	}
+
+	return values
 }
 
 func deserializeTodoDynamo(item map[string]types.AttributeValue) (*Todo, error) {
@@ -102,8 +110,9 @@ func (s *Service) CreateTodo(
 
 	todo := New(userID, title, description)
 
+	dynamoItem := serializeTodoDynamo(todo)
 	result, err := s.dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
-		Item:      serializeTodoDynamo(todo),
+		Item:      dynamoItem,
 		TableName: aws.String(TodoItemsTableName),
 	})
 	if err != nil {
@@ -139,25 +148,24 @@ func (s *Service) FindTodoByID(ctx context.Context, id uuid.UUID) (*Todo, error)
 }
 
 func (s *Service) GetAllTodosForUser(ctx context.Context, userID uuid.UUID) (*Todo, error) {
-	input := &dynamodb.ScanInput{
-		TableName:                 aws.String(TodoItemsTableName),
-		AttributesToGet:           nil,
-		ConditionalOperator:       "",
-		ConsistentRead:            nil,
-		ExclusiveStartKey:         nil,
-		ExpressionAttributeNames:  nil,
-		ExpressionAttributeValues: nil,
-		FilterExpression:          nil,
-		IndexName:                 nil,
-		Limit:                     nil,
-		ProjectionExpression:      nil,
-		ReturnConsumedCapacity:    "",
-		ScanFilter:                nil,
-		Segment:                   nil,
-		Select:                    "",
-		TotalSegments:             nil,
-	}
-	s.dynamoClient.Query()
+	//input := &dynamodb.ScanInput{
+	//	TableName:                 aws.String(TodoItemsTableName),
+	//	ConditionalOperator:       "",
+	//	ConsistentRead:            nil,
+	//	ExclusiveStartKey:         nil,
+	//	ExpressionAttributeNames:  nil,
+	//	ExpressionAttributeValues: nil,
+	//	FilterExpression:          nil,
+	//	IndexName:                 nil,
+	//	Limit:                     nil,
+	//	ProjectionExpression:      nil,
+	//	ReturnConsumedCapacity:    "",
+	//	ScanFilter:                nil,
+	//	Segment:                   nil,
+	//	Select:                    "",
+	//	TotalSegments:             nil,
+	//}
+	//s.dynamoClient.Query()
 	return nil, nil
 }
 func (s *Service) UpdateTodo(ctx context.Context, todo *Todo) error {

@@ -7,10 +7,10 @@ import (
 )
 
 func registerRoutes(mux *http.ServeMux, todoService *todo.Service) {
-	register(mux, "POST /", handleCreateTodo(todoService))
-	register(mux, "GET /{id}", handleGetTodoByID(todoService))
-	register(mux, "PUT /", handleUpdateTodo(todoService))
-	register(mux, "DELETE /", handleDeleteTodo(todoService))
+	register(mux, "POST /todos", handleCreateTodo(todoService))
+	register(mux, "GET /todos/{id}", handleGetTodoByID(todoService))
+	register(mux, "PUT /todos/{id}", handleUpdateTodo(todoService))
+	register(mux, "DELETE /todos/{id}", handleDeleteTodo(todoService))
 }
 
 type CreateTodoParams struct {

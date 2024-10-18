@@ -10,6 +10,7 @@ type Todo struct {
 	// UserID is the ID of the user that created the task.
 	UserID      uuid.UUID
 	CreatedAt   time.Time
+	UpdatedAt   time.Time
 	CompletedAt *time.Time
 	Title       string
 	Description string
