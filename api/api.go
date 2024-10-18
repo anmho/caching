@@ -1,14 +1,14 @@
 package api
 
 import (
-	"database/sql"
+	"github.com/anmho/caching/todo"
 	"net/http"
 )
 
-func New(db *sql.DB) *http.ServeMux {
+func New(todoService *todo.Service) *http.ServeMux {
 	mux := http.NewServeMux()
 
-	registerRoutes(mux, db)
+	registerRoutes(mux, todoService)
 
 	return mux
 }
