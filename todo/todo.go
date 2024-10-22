@@ -2,11 +2,12 @@ package todo
 
 import (
 	"github.com/google/uuid"
+	"log/slog"
 	"time"
 )
 
 type Todo struct {
-	ID uuid.UUID
+	ID uuid.UUID `json:"id"`
 	// UserID is the ID of the user that created the task.
 	UserID      uuid.UUID  `json:"user_id"`
 	CreatedAt   time.Time  `json:"created_at"`
@@ -21,6 +22,10 @@ func (t *Todo) IsCompleted() bool {
 }
 
 func New(userID uuid.UUID, title, description string) *Todo {
+	slog.Info(
+		"new todo",
+		slog.Any("description", description),
+	)
 	return &Todo{
 		ID:          uuid.New(),
 		UserID:      userID,

@@ -12,6 +12,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	case *APIError:
 		slog.Error(
 			"API error occurred in route",
+			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
 			slog.Int("status", e.Status),
 			slog.Any("message", e.Message),

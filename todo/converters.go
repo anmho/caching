@@ -1,11 +1,27 @@
 package todo
 
 import (
+	"errors"
+	"fmt"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/google/uuid"
-	"strconv"
+	"log/slog"
 	"time"
 )
+
+var (
+	FieldNotFoundError = errors.New("field not found")
+	DynamoDBTypeError  = errors.New("type of field in dynamo did not match expected type")
+	DateParsingError   = errors.New("date string did not match expected format")
+)
+
+func NewDynamoDBTypeError(field string) error {
+	return fmt.Errorf("%s: %w", field, DynamoDBTypeError)
+}
+
+func NewDateParsingError(field string, cause error) error {
+	return fmt.Errorf("field %s did not match expected format: %w", field, cause)
+}
 
 func serializeTodoDynamo(todo *Todo) map[string]types.AttributeValue {
 	if todo == nil {
@@ -15,72 +31,126 @@ func serializeTodoDynamo(todo *Todo) map[string]types.AttributeValue {
 	values := map[string]types.AttributeValue{
 		"ID":          &types.AttributeValueMemberS{Value: todo.ID.String()},
 		"UserID":      &types.AttributeValueMemberS{Value: todo.UserID.String()},
-		"CreatedAt":   &types.AttributeValueMemberN{Value: strconv.FormatInt(todo.CreatedAt.UnixMilli(), 10)}, // Store as Unix timestamp
+		"CreatedAt":   &types.AttributeValueMemberS{Value: formatDate(&todo.CreatedAt)}, // Store as Unix timestamp
 		"Title":       &types.AttributeValueMemberS{Value: todo.Title},
 		"Description": &types.AttributeValueMemberS{Value: todo.Description},
 	}
 
 	if todo.UpdatedAt != nil {
-		values["UpdatedAt"] = &types.AttributeValueMemberN{Value: strconv.FormatInt(todo.UpdatedAt.UnixMilli(), 10)}
+		values["UpdatedAt"] = &types.AttributeValueMemberS{Value: formatDate(todo.UpdatedAt)}
 	}
 
 	if todo.IsCompleted() {
-		values["CompletedAt"] = &types.AttributeValueMemberN{Value: strconv.FormatInt(todo.CompletedAt.UnixMilli(), 10)}
+		values["CompletedAt"] = &types.AttributeValueMemberS{Value: formatDate(todo.CompletedAt)}
 	}
 
 	return values
 }
 
+func parseDynamoField[T types.AttributeValue](fieldName string, item map[string]types.AttributeValue) (T, error) {
+	if field, ok := item[fieldName].(T); ok {
+		return field, nil
+	} else {
+		return *new(T), fmt.Errorf("%s: %w", fieldName, FieldNotFoundError) // could also be incorrect type
+	}
+}
+
+func parseStringFromDynamo(fieldName string, item map[string]types.AttributeValue) (string, error) {
+	field, ok := item[fieldName].(*types.AttributeValueMemberS)
+	if !ok {
+		return "", fmt.Errorf("%s: %w", fieldName, FieldNotFoundError)
+	}
+	return field.Value, nil
+}
+
+func parseUUIDFromDynamo(fieldName string, item map[string]types.AttributeValue) (uuid.UUID, error) {
+	uuidField, err := parseDynamoField[*types.AttributeValueMemberS](fieldName, item)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	id, err := uuid.Parse(uuidField.Value)
+	if err != nil {
+		return uuid.Nil, nil
+	}
+	return id, nil
+}
+
+func parseDateFromDynamo(fieldName string, item map[string]types.AttributeValue) (time.Time, error) {
+	dateField, err := parseDynamoField[*types.AttributeValueMemberS](fieldName, item)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	date, err := parseDate(dateField.Value)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return date, nil
+}
+
 func deserializeTodoDynamo(item map[string]types.AttributeValue) (*Todo, error) {
 	todo := new(Todo)
-	if idField, ok := item["ID"].(*types.AttributeValueMemberS); ok {
-		id, err := uuid.Parse(idField.Value)
-		if err != nil {
-			return nil, err
-		}
+	var err error
 
-		todo.ID = id
+	todo.UserID, err = parseUUIDFromDynamo("UserID", item)
+	if err != nil {
+		return nil, err
 	}
 
-	if createdAtField, ok := item["CreatedAt"].(*types.AttributeValueMemberN); ok {
-		createdAtUnixMillis, err := strconv.ParseInt(createdAtField.Value, 10, 64)
-		if err != nil {
-			return nil, err
-		}
-
-		createdAt := time.UnixMilli(createdAtUnixMillis)
-		todo.CreatedAt = createdAt
+	todo.ID, err = parseUUIDFromDynamo("ID", item)
+	if err != nil {
+		return nil, err
 	}
 
-	if updatedAtField, ok := item["UpdatedAt"].(*types.AttributeValueMemberN); ok {
-		updatedAtUnixMillis, err := strconv.ParseInt(updatedAtField.Value, 10, 64)
-		if err != nil {
-			return nil, err
+	// mandatory field
+	todo.CreatedAt, err = parseDateFromDynamo("CreatedAt", item)
+	if err != nil {
+		return nil, err
+	}
+
+	updatedAtField, hasField := item["UpdatedAt"]
+	if hasField {
+		updatedAtField, ok := updatedAtField.(*types.AttributeValueMemberS)
+		if !ok {
+			return nil, NewDynamoDBTypeError("UpdatedAt")
 		}
 
-		updatedAt := time.UnixMilli(updatedAtUnixMillis)
+		updatedAt, err := parseDate(updatedAtField.Value)
+		if err != nil {
+			return nil, NewDateParsingError("UpdatedAt", err)
+		}
 		todo.UpdatedAt = &updatedAt
 	}
-
-	if completedAtField, ok := item["CompletedAt"].(*types.AttributeValueMemberN); ok {
-		completedAtUnixMillis, err := strconv.ParseInt(completedAtField.Value, 10, 64)
-		if err != nil {
-			return nil, err
+	completedAtField, hasField := item["CompletedAt"]
+	if hasField {
+		completedAtField, ok := completedAtField.(*types.AttributeValueMemberS)
+		if !ok {
+			return nil, NewDynamoDBTypeError("CompletedAt")
 		}
 
-		completedAt := time.UnixMilli(completedAtUnixMillis)
+		completedAt, err := parseDate(completedAtField.Value)
+		if err != nil {
+			return nil, NewDateParsingError("CompletedAt", err)
+		}
+
 		todo.CompletedAt = &completedAt
 	}
 
-	if titleField, ok := item["Title"].(*types.AttributeValueMemberS); ok {
-		title := titleField.Value
-		todo.Title = title
+	todo.Title, err = parseStringFromDynamo("Title", item)
+	if err != nil {
+		return nil, err
 	}
 
-	if descriptionField, ok := item["Description"].(*types.AttributeValueMemberS); ok {
-		description := descriptionField.Value
-		todo.Description = description
+	todo.Description, err = parseStringFromDynamo("Description", item)
+	if err != nil {
+		return nil, err
 	}
+
+	slog.Info("deserializeTodoDynamo",
+		slog.Any("item", item),
+		slog.Any("todo", todo))
 
 	return todo, nil
 }

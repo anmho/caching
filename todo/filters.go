@@ -1,18 +1,18 @@
-package api
+package todo
 
 import (
 	"github.com/google/uuid"
 	"net/url"
 )
 
-type TodoFilters struct {
+type Filters struct {
 	UserID *uuid.UUID
 }
 
-type TodoFilterFunc func(f *TodoFilters)
+type FilterFunc func(f *Filters)
 
-func WithUserID(userID uuid.UUID) TodoFilterFunc {
-	return func(f *TodoFilters) {
+func WithUserID(userID uuid.UUID) FilterFunc {
+	return func(f *Filters) {
 		f.UserID = &userID
 	}
 }
@@ -21,8 +21,8 @@ const (
 	UserIDKey string = "user-id"
 )
 
-func parseFilters(queryParams url.Values) ([]TodoFilterFunc, error) {
-	filters := make([]TodoFilterFunc, 0)
+func parseFilters(queryParams url.Values) ([]FilterFunc, error) {
+	filters := make([]FilterFunc, 0)
 	for key, values := range queryParams {
 		if len(values) == 0 {
 			continue

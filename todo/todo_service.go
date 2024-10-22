@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/google/uuid"
 	"log/slog"
+	"time"
 )
 
 const TodoItemsTableName = "TodoItems"
@@ -39,7 +40,6 @@ func (s *Service) CreateTodo(
 	title string,
 	description string,
 ) (*Todo, error) {
-
 	todo := New(userID, title, description)
 
 	dynamoItem := serializeTodoDynamo(todo)
@@ -56,10 +56,11 @@ func (s *Service) CreateTodo(
 	return todo, nil
 }
 
-func (s *Service) FindTodoByID(ctx context.Context, id uuid.UUID) (*Todo, error) {
+func (s *Service) FindTodoByID(ctx context.Context, userID uuid.UUID, id uuid.UUID) (*Todo, error) {
 	params := &dynamodb.GetItemInput{
 		Key: map[string]types.AttributeValue{
-			"ID": &types.AttributeValueMemberS{Value: id.String()},
+			"UserID": &types.AttributeValueMemberS{Value: userID.String()},
+			"ID":     &types.AttributeValueMemberS{Value: id.String()},
 		},
 		TableName:              aws.String(TodoItemsTableName),
 		ConsistentRead:         aws.Bool(true),
@@ -79,7 +80,7 @@ func (s *Service) FindTodoByID(ctx context.Context, id uuid.UUID) (*Todo, error)
 	return todo, nil
 }
 
-func (s *Service) GetAllTodosForUser(ctx context.Context, userID uuid.UUID) ([]*Todo, error) {
+func (s *Service) ListUserTodos(ctx context.Context, userID uuid.UUID) ([]*Todo, error) {
 	// add pagination with pagination token?
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String(TodoItemsTableName),
@@ -107,26 +108,76 @@ func (s *Service) GetAllTodosForUser(ctx context.Context, userID uuid.UUID) ([]*
 
 	return todos, nil
 }
-func (s *Service) UpdateTodo(ctx context.Context, todo *Todo) error {
-	//todoItem := serializeTodoDynamo(todo)
-	//item, err := s.dynamoClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-	//	Key: map[string]types.AttributeValue{
-	//		"ID": &types.AttributeValueMemberS{Value: todo.ID.String()},
-	//	},
-	//	TableName:                           aws.String(TodoItemsTableName),
-	//	ConditionExpression:                 nil,
-	//	ConditionalOperator:                 "",
-	//	ExpressionAttributeNames:            nil,
-	//	ExpressionAttributeValues:           nil,
-	//	ReturnConsumedCapacity:              "",
-	//	ReturnItemCollectionMetrics:         "",
-	//	ReturnValues:                        "",
-	//	ReturnValuesOnConditionCheckFailure: "",
-	//	UpdateExpression:                    nil,
-	//})
-	//if err != nil {
-	//	return err
-	//}
+
+func formatDate(t *time.Time) string {
+	return t.Format(time.RFC3339)
+}
+
+func parseDate(date string) (time.Time, error) {
+	return time.Parse(time.RFC3339, date)
+}
+
+type UpdateParams struct {
+	Completed   bool   `json:"completed" validate:"required"`
+	Title       string `json:"title" validate:"required"`
+	Description string `json:"description" validate:"required"`
+}
+
+func (s *Service) UpdateTodo(
+	ctx context.Context,
+	userID uuid.UUID,
+	id uuid.UUID,
+	params *UpdateParams) error {
+
+	expressionAttributeValues := map[string]types.AttributeValue{
+		":description": &types.AttributeValueMemberS{
+			Value: params.Description,
+		},
+		":title": &types.AttributeValueMemberS{
+			Value: params.Title,
+		},
+		":updatedAt": &types.AttributeValueMemberS{
+			Value: formatDate(aws.Time(time.Now().UTC())),
+		},
+	}
+
+	if params.Completed {
+		expressionAttributeValues[":completedAt"] = &types.AttributeValueMemberS{
+			Value: formatDate(aws.Time(time.Now().UTC())),
+		}
+	} else {
+		expressionAttributeValues[":completedAt"] = nil
+	}
+
+	slog.Info("UpdateTodo", slog.Any("params", params), slog.Any(":completedAt", expressionAttributeValues[":completedAt"]))
+
+	input := &dynamodb.UpdateItemInput{
+		Key: map[string]types.AttributeValue{
+			"UserID": &types.AttributeValueMemberS{
+				Value: userID.String(),
+			},
+			"ID": &types.AttributeValueMemberS{
+				Value: id.String(),
+			},
+		},
+		TableName: aws.String(TodoItemsTableName),
+		UpdateExpression: aws.String(`
+			SET 
+				Title = :title, 
+				Description = :description,
+				UpdatedAt = :updatedAt,
+				CompletedAt = :completedAt
+		`),
+		ExpressionAttributeValues: expressionAttributeValues,
+		ReturnConsumedCapacity:    types.ReturnConsumedCapacityTotal,
+		// does not return values to save rcu
+	}
+
+	_, err := s.dynamoClient.UpdateItem(ctx, input)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
