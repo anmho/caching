@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 	"log/slog"
 	"time"
@@ -24,7 +25,10 @@ func WithCacheStrategy(strategy cache.Strategy) func(s *Service) {
 	}
 }
 
-func MakeService(dynamoClient *dynamodb.Client, opts ...func(o *Service)) *Service {
+func MakeService(
+	dynamoClient *dynamodb.Client,
+	redisClient *redis.Client,
+	opts ...func(o *Service)) *Service {
 	s := &Service{
 		dynamoClient: dynamoClient,
 	}

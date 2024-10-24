@@ -7,5 +7,19 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - "./docker/dynamodb:/home/dynamodblocal/data"
+      - dynamo_data:/home/dynamodblocal/data
     working_dir: /home/dynamodblocal
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6380:6379"
+    command: [ "redis-server", "/etc/redis/redis.conf" ]
+    volumes:
+      - ./redis.conf:/etc/redis/redis.conf
+      - redis_data:/data
+volumes:
+  redis_data:
+  dynamo_data:
+
+

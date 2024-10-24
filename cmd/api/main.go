@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/go-redis/redis/v8"
 	"log"
 	"net/http"
 	"os"
@@ -16,6 +17,11 @@ import (
 
 const (
 	port = 8080
+
+	RedisURL      = "http://localhost:6380"
+	RedisPassword = "password"
+
+	DynamoDBURL = "http://localhost:8000"
 )
 
 func WithEndpoint(endpoint string) func(*dynamodb.Options) {
@@ -25,14 +31,22 @@ func WithEndpoint(endpoint string) func(*dynamodb.Options) {
 }
 
 func main() {
+	redisClient := redis.NewClient(&redis.Options{
+		Network:  "tcp",
+		Addr:     RedisURL,
+		Password: RedisPassword,
+	})
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		log.Fatalln(err)
 	}
 
 	// Setup dependencies
-	dynamoClient := dynamodb.NewFromConfig(cfg, WithEndpoint("http://localhost:8000"))
-	todoService := todo.MakeService(dynamoClient)
+	dynamoClient := dynamodb.NewFromConfig(cfg, WithEndpoint(DynamoDBURL))
+	todoService := todo.MakeService(
+		dynamoClient,
+		redisClient,
+	)
 
 	todoAPI := api.New(todoService)
 	srv := http.Server{
