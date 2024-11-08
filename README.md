@@ -20,6 +20,8 @@ Cache and DB schemas can differ (?)
 Cache can become out of sync with the database.
 Application can serve stale data.
 
+Reactive: only update the cache on reads. Writes don't do anything (except invaldiate the cache).
+
 Cache gets filled only after a cache miss. 3 trips
 **Best For**
 Works best for read-heavy workloads
