@@ -50,3 +50,6 @@ Asynchronously write to persistent database after writing to cache
 ### Least Frequently Used (LFU)
 ### Last In First Out (LIFO)
 ### Random Replacement (RR)
+
+What if the cache goes down/has a network failure and contains stale data?
+Redis SCAN
