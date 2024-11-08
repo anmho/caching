@@ -33,6 +33,8 @@ Cache will be only filled with frequently read data.
 Application writes to the cache and returns response to the application.
 Data is persisted asynchronously after cache is written.
 
+The cache is written to on writes too.
+
 Feature of the database
 
 Well synced with database
