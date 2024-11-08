@@ -1,7 +1,7 @@
 
 
 
-# An overview of various caching methods
+# An Overview of Various Caching Methods
 
 ### Cache Aside
 **Read Strategies**
