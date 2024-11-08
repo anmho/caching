@@ -10,7 +10,7 @@
 3. Update the cache with the data from the database.
 
 **Write Path**
-1. 
+1. Update the cache.
 
 **Pros**
 **Cons**
