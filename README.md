@@ -5,7 +5,7 @@
 
 ### Read Strategies
 
-**Write Around (Cache Aside, Lazy Loading**
+**Write Around (Cache Aside, Lazy Loading)**
 1. Try to fetch data from cache. If cache hit, return data to caller.
 2. If miss, application will get data from the database.
 3. Update the cache with the data from the database.
