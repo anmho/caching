@@ -4,7 +4,7 @@
 # An overview of various caching methods
 
 ### Cache Aside
-**Read Path**
+**Read Strategies**
 1. Try to fetch data from cache. If cache hit, return data to caller.
 2. If miss, get data from the database.
 3. Update the cache with the data from the database.
