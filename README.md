@@ -43,3 +43,8 @@ Instagram example:
 ### Write-Back Cache
 Reads and writes go through the cache
 Asynchronously write to persistent database after writing to cache
+
+
+# Cache eviction policies
+### Least Recently Used
+### 
