@@ -11,14 +11,32 @@
 3. Update the cache with the data from the database.
 Note: The application calls the database directly.
 
+
+
 **Pros**
 Resilient to cache failures and falls back to DB
 Cache and DB schemas can differ (?)
 **Cons**
 Cache can become out of sync with the database.
 Application can serve stale data.
+
+Cache gets filled only after a cache miss. 3 trips
 **Best For**
 Works best for read-heavy workloads
+Cache will be only filled with frequently read data.
+
+### Write Through Cache
+
+
+Application writes to the cache and returns response to the application.
+Data is persisted asynchronously after cache is written.
+
+Feature of the database
+
+Well synced with database
+Infrequently requested data is written to the cache. A lot of unnecessary writes
+Instagram example: 
+99% of profiles don't get queried often.
 
 ### Read Through
 1. Try to fetch data from cache. If hit, return response.
@@ -34,13 +52,6 @@ Simplifies the application code
 First request is always a cache miss.
 Application can serve stale data
 
-### Write Through Cache
-
-
-Application writes to the cache and returns response to the application.
-Data is persisted asynchronously after cache is written.
-
-Feature of the database
 
 ### Write Around Cache
 \
