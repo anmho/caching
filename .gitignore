@@ -4,4 +4,4 @@
 /bin/
 /tmp/
 
-.terraform
+**/.terraform
