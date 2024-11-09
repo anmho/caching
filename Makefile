@@ -14,3 +14,7 @@ watch:
 .PHONY: test
 test:
 	@go test ./...
+
+.PHONY: tf
+tf:
+	@terraform -chdir=./terraform apply
