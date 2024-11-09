@@ -2,11 +2,11 @@ package todo
 
 import (
 	"context"
+	"github.com/anmho/caching/async"
 	"github.com/anmho/caching/cache"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 	"log/slog"
 	"time"
@@ -16,6 +16,7 @@ const TodoItemsTableName = "TodoItems"
 
 type Service struct {
 	dynamoClient  *dynamodb.Client
+	cache         *cache.Cache[Todo]
 	cacheStrategy cache.Strategy
 }
 
@@ -25,12 +26,18 @@ func WithCacheStrategy(strategy cache.Strategy) func(s *Service) {
 	}
 }
 
+type CachedTodoResult struct {
+	Todo  *Todo
+	Found bool
+}
+
 func MakeService(
 	dynamoClient *dynamodb.Client,
-	redisClient *redis.Client,
+	todoCache *cache.Cache[Todo],
 	opts ...func(o *Service)) *Service {
 	s := &Service{
 		dynamoClient: dynamoClient,
+		cache:        todoCache,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -60,31 +67,56 @@ func (s *Service) CreateTodo(
 	return todo, nil
 }
 
-func (s *Service) FindTodoByID(ctx context.Context, userID uuid.UUID, id uuid.UUID) (*Todo, error) {
-	params := &dynamodb.GetItemInput{
-		Key: map[string]types.AttributeValue{
-			"UserID": &types.AttributeValueMemberS{Value: userID.String()},
-			"ID":     &types.AttributeValueMemberS{Value: id.String()},
-		},
-		TableName:              aws.String(TodoItemsTableName),
-		ConsistentRead:         aws.Bool(true),
-		ReturnConsumedCapacity: types.ReturnConsumedCapacityTotal,
-	}
+func (s *Service) FindTodoByID(
+	ctx context.Context,
+	userID uuid.UUID,
+	id uuid.UUID) (*Todo, error) {
 
-	result, err := s.dynamoClient.GetItem(ctx, params)
-	if err != nil {
-		return nil, err
-	}
+	// check cache first
+	switch s.cacheStrategy {
+	case cache.CacheAside:
+		result, err := s.readTodoFromCache(ctx, id)
+		if err != nil {
+			return nil, err
+		}
 
-	todo, err := deserializeTodoDynamo(result.Item)
-	if err != nil {
-		return nil, err
-	}
+		// Cache hit, immediately return
+		if result.CacheHit {
+			return result.Data, nil
+		}
 
-	return todo, nil
+		item, err := s.readTodoFromDynamo(ctx, id, userID)
+		if err != nil {
+			return nil, err
+		}
+
+		// Fire and forget cache write
+		async.HandleAsync(func() {
+			// if this fails transiently, not a big deal
+			err := s.writeTodoToCache(ctx, item)
+			if err != nil {
+				slog.Error("async cache write",
+					slog.Any("error", err),
+					slog.Any("userID", userID),
+					slog.Any("todoID", id),
+				)
+				return
+			}
+		})
+
+		return item, nil
+	default:
+		item, err := s.readTodoFromDynamo(ctx, id, userID)
+		if err != nil {
+			return nil, err
+		}
+		return item, nil
+	}
 }
 
-func (s *Service) ListUserTodos(ctx context.Context, userID uuid.UUID) ([]*Todo, error) {
+func (s *Service) ListUserTodos(
+	ctx context.Context,
+	userID uuid.UUID) ([]*Todo, error) {
 	// add pagination with pagination token?
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String(TodoItemsTableName),
@@ -133,6 +165,63 @@ func (s *Service) UpdateTodo(
 	id uuid.UUID,
 	params *UpdateParams) error {
 
+	switch s.cacheStrategy {
+	case cache.CacheAside:
+		err := s.writeTodoToDynamo(ctx, id, userID, params)
+		if err != nil {
+			return err
+		}
+		err = s.cache.InvalidateKey(ctx, id.String())
+	default:
+		err := s.writeTodoToDynamo(ctx, id, userID, params)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) DeleteTodo(userID uuid.UUID, todoID uuid.UUID) {
+
+}
+
+func (s *Service) readTodoFromCache(ctx context.Context, id uuid.UUID) (cache.ReadCacheResult[Todo], error) {
+	return s.cache.ReadItem(ctx, id.String())
+}
+
+func (s *Service) readTodoFromDynamo(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*Todo, error) {
+	params := &dynamodb.GetItemInput{
+		Key: map[string]types.AttributeValue{
+			"UserID": &types.AttributeValueMemberS{Value: userID.String()},
+			"ID":     &types.AttributeValueMemberS{Value: id.String()},
+		},
+		TableName:              aws.String(TodoItemsTableName),
+		ConsistentRead:         aws.Bool(true),
+		ReturnConsumedCapacity: types.ReturnConsumedCapacityTotal,
+	}
+
+	result, err := s.dynamoClient.GetItem(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	todo, err := deserializeTodoDynamo(result.Item)
+	if err != nil {
+		return nil, err
+	}
+	return todo, nil
+}
+
+func (s *Service) writeTodoToCache(ctx context.Context, todo *Todo) error {
+	return s.cache.WriteItem(ctx, todo.ID.String(), todo)
+}
+
+// this must be existing already. this is a put operation
+func (s *Service) writeTodoToDynamo(ctx context.Context,
+	userID uuid.UUID,
+	id uuid.UUID,
+	params *UpdateParams) error {
 	expressionAttributeValues := map[string]types.AttributeValue{
 		":description": &types.AttributeValueMemberS{
 			Value: params.Description,
@@ -154,7 +243,6 @@ func (s *Service) UpdateTodo(
 	}
 
 	slog.Info("UpdateTodo", slog.Any("params", params), slog.Any(":completedAt", expressionAttributeValues[":completedAt"]))
-
 	input := &dynamodb.UpdateItemInput{
 		Key: map[string]types.AttributeValue{
 			"UserID": &types.AttributeValueMemberS{
@@ -181,10 +269,5 @@ func (s *Service) UpdateTodo(
 	if err != nil {
 		return err
 	}
-
 	return nil
-}
-
-func (s *Service) DeleteTodo(userID uuid.UUID, todoID uuid.UUID) {
-
 }
