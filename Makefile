@@ -1,3 +1,6 @@
+TERRAFORM_DIR=./terraform
+REGION := $(shell terraform -chdir=$(TERRAFORM_DIR) output -raw region)
+CLUSTER_NAME := $(shell terraform -chdir=$(TERRAFORM_DIR) output -raw cluster_name)
 
 .PHONY: build
 build:
@@ -15,6 +18,14 @@ watch:
 test:
 	@go test ./...
 
-.PHONY: tf
-tf:
+.PHONY: cluster
+cluster:
 	@terraform -chdir=./terraform apply
+
+.PHONY: destroy
+destroy:
+	@terraform -chdir=./terraform destroy
+
+.PHONY: kubectx
+kubectx:
+	aws eks --region $(REGION) update-kubeconfig --name $(CLUSTER_NAME)
