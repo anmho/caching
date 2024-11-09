@@ -2,6 +2,8 @@ TERRAFORM_DIR=./terraform
 REGION := $(shell terraform -chdir=$(TERRAFORM_DIR) output -raw region)
 CLUSTER_NAME := $(shell terraform -chdir=$(TERRAFORM_DIR) output -raw cluster_name)
 
+default: build
+
 .PHONY: build
 build:
 	@go build -o ./bin/api ./cmd/api
@@ -20,11 +22,11 @@ test:
 
 .PHONY: cluster
 cluster:
-	@terraform -chdir=./terraform apply
+	@terraform -chdir=$(TERRAFORM_DIR) apply
 
 .PHONY: destroy
 destroy:
-	@terraform -chdir=./terraform destroy
+	@terraform -chdir=$(TERRAFORM_DIR) destroy
 
 .PHONY: kubectx
 kubectx:
