@@ -1,0 +1,8 @@
+.idea
+.github
+.git
+/tmp/
+/bin/
+/terraform/
+docker-compose.yaml
+
