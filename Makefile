@@ -2,15 +2,19 @@ TERRAFORM_DIR=./terraform
 REGION := $(shell terraform -chdir=$(TERRAFORM_DIR) output -raw region)
 CLUSTER_NAME := $(shell terraform -chdir=$(TERRAFORM_DIR) output -raw cluster_name)
 
-default: build
+default: api
 
-.PHONY: build
-build:
+.PHONY: api
+api:
 	@go build -o ./bin/api ./cmd/api
 
 .PHONY: run
-run: build
+run: api
 	@./bin/api
+
+.PHONY: hello-image
+hello-image:
+	docker build --platform linux/amd64 -t anmho/hello -f ./cmd/hello/Dockerfile .
 
 .PHONY: watch
 watch:
